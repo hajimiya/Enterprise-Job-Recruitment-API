@@ -1,2 +1,8 @@
 fastapi
 uvicorn[standard]
+pydantic
+sqlalchemy
+psycopg2-binary
+email-validator
+pwdlib[argon2]
+PyJWT
