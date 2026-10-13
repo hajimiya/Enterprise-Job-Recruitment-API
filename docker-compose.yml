@@ -1,0 +1,89 @@
+
+services:
+  auth-service:
+    build:
+      context: ./services/auth_service
+    container_name: auth-service
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres-db:5432/recruitment_db
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
+      ALGORITHM: HS256
+    networks:
+      - recruitment-network
+
+  job-service:
+    build:
+      context: ./services/job_service
+    container_name: job-service
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres-db:5432/job_db
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
+      ALGORITHM: HS256
+    networks:
+      - recruitment-network
+
+  application-service:
+    build:
+      context: ./services/application_service
+    container_name: application-service
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres-db:5432/application_db
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
+      ALGORITHM: HS256
+      JOB_SERVICE_URL: http://job-service:8001
+      NOTIFICATION_SERVICE_URL: http://notification-service:8003
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?Set INTERNAL_SERVICE_TOKEN in .env}
+    depends_on:
+      - job-service
+      - notification-service
+    networks:
+      - recruitment-network
+
+  notification-service:
+    build:
+      context: ./services/notification_service
+    container_name: notification-service
+    restart: unless-stopped
+    ports:
+      - "8003:8003"
+    environment:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@postgres-db:5432/notification_db
+      SECRET_KEY: ${SECRET_KEY:?Set SECRET_KEY in .env}
+      ALGORITHM: HS256
+      INTERNAL_SERVICE_TOKEN: ${INTERNAL_SERVICE_TOKEN:?Set INTERNAL_SERVICE_TOKEN in .env}
+    networks:
+      - recruitment-network
+
+  api-gateway:
+    build:
+      context: ./services/api_gateway
+    container_name: api-gateway
+    restart: unless-stopped
+    ports:
+      - "8004:8004"
+    environment:
+      AUTH_SERVICE_URL: http://auth-service:8000
+      JOB_SERVICE_URL: http://job-service:8001
+      APPLICATION_SERVICE_URL: http://application-service:8002
+      NOTIFICATION_SERVICE_URL: http://notification-service:8003
+    depends_on:
+      - auth-service
+      - job-service
+      - application-service
+      - notification-service
+    networks:
+      - recruitment-network
+
+networks:
+  recruitment-network:
+    external: true
+    name: recruitment-network

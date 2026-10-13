@@ -1,7 +1,7 @@
 
 import os
-
 import httpx
+import logging
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -9,6 +9,15 @@ from app.database import get_db
 from app.models import JobApplication
 from app.schemas import ApplicationCreate, ApplicationResponse, ApplicationStatusUpdate
 from app.security import get_current_user, require_candidate, require_recruiter
+
+logger = logging.getLogger(__name__)
+
+NOTIFICATION_SERVICE_URL = os.getenv(
+    "NOTIFICATION_SERVICE_URL",
+    "http://notification-service:8003",
+)
+
+INTERNAL_SERVICE_TOKEN = os.getenv("INTERNAL_SERVICE_TOKEN")
 
 router = APIRouter(prefix="/applications", tags=["Applications"])
 
@@ -158,6 +167,32 @@ def update_application_status(
     application.status = data.status
     db.commit()
     db.refresh(application)
+
+    try:
+        if not INTERNAL_SERVICE_TOKEN:
+            logger.error("INTERNAL_SERVICE_TOKEN is not configured")
+        else:
+            with httpx.Client(timeout=5.0) as client:
+                response = client.post(
+                    f"{NOTIFICATION_SERVICE_URL}/notifications/internal",
+                    headers={
+                        "X-Internal-Token": INTERNAL_SERVICE_TOKEN,
+                    },
+                    json={
+                        "user_id": application.candidate_id,
+                        "title": "Application Status Updated",
+                        "message": (
+                            f"Your application for job ID "
+                            f"{application.job_id} is now {application.status}."
+                        ),
+                        "notification_type": "application_status",
+                    },
+                )
+                response.raise_for_status()
+    except Exception:
+        logger.exception(
+            "Application status updated, but notification delivery failed"
+        )
 
     return application
 
